@@ -1,0 +1,90 @@
+.reportPage {
+  min-height: 100%;
+  padding: 20px clamp(14px, 2.4vw, 32px) 36px;
+  color: #263447;
+  background: #f4f7fa;
+}
+
+.pageHeader { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin: 0 0 16px; }
+.eyebrow { margin: 0 0 5px; color: #a51d47; font-size: 10px; font-weight: 800; letter-spacing: .14em; }
+h1 { margin: 0; color: #24344b; font-size: clamp(22px, 2.4vw, 30px); font-weight: 800; }
+.periodCaption { color: #8995a4; font-size: 11px; }
+
+.controlPanel { display: flex; align-items: end; gap: 24px; padding: 15px 17px 16px; border: 1px solid #e1e6ed; border-radius: 11px; background: #fff; box-shadow: 0 2px 6px rgba(40, 57, 76, .04); }
+.controlPanel label, .viewMode { display: flex; flex-direction: column; gap: 6px; }
+.controlPanel label > span, .viewMode > span { color: #66758a; font-size: 10px; font-weight: 800; letter-spacing: .04em; }
+.controlPanel input { width: 176px; border: 1px solid #d7dfe8; border-radius: 8px; padding: 9px 10px; color: #9e2449; background: #fbfcfd; font: inherit; font-size: 13px; font-weight: 800; }
+.viewMode { flex: 1; }
+.viewMode > div { display: flex; overflow: hidden; border: 1px solid #dce3ec; border-radius: 8px; background: #f0f3f7; }
+.viewMode button { min-height: 37px; border: 0; padding: 0 16px; color: #657286; background: transparent; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; }
+.viewMode .selectedMode { color: #fff; background: #ac1647; box-shadow: 0 2px 6px rgba(172, 22, 71, .2); }
+.disabledMode { opacity: .55; cursor: not-allowed !important; }
+.refreshButton, .exportButton { border: 0; border-radius: 7px; padding: 10px 15px; color: #fff; background: #ad1849; cursor: pointer; font: inherit; font-size: 11px; font-weight: 800; white-space: nowrap; }
+.refreshButton:disabled, .exportButton:disabled { opacity: .55; cursor: not-allowed; }
+
+.summaryGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 17px 0 15px; }
+.metricCard { position: relative; min-height: 116px; padding: 10px 10px 6px 11px; overflow: hidden; border: 1px solid #e0e5eb; border-radius: 11px; background: #fff; box-shadow: 0 3px 8px rgba(42, 59, 77, .05); }
+.metricCard::before { position: absolute; top: 0; bottom: 0; left: 0; width: 4px; content: ''; background: #ad1849; }
+.metricCard.legal::before { background: #2e6bd7; }
+.metricCard.individual::before { background: #ec9a09; }
+.metricCard > span { color: #718094; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.metricMain { display: flex; align-items: baseline; gap: 8px; margin-top: 9px; }
+.metricMain strong { color: #172b42; font-size: clamp(24px, 2.5vw, 31px); line-height: 1; }
+.metricMain small { color: #7c8795; font-size: 11px; font-weight: 700; }
+.metricCard.legal .metricMain strong { color: #245db9; }
+.metricCard.individual .metricMain strong { color: #bc6900; }
+.changeDown, .changeUp { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.changeDown { color: #cf304c; }
+.changeUp { color: #118a61; }
+.changeDown b, .changeUp b { font-size: 14px; }
+.changeDown small, .changeUp small { padding: 3px 6px; border-radius: 4px; background: #fff0f2; font-size: 10px; font-weight: 800; }
+.changeUp small { background: #eaf8f2; }
+
+.reportToolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 47px; border-bottom: 1px solid #d8dee7; }
+.toolbarTabs { display: flex; align-self: stretch; gap: 7px; }
+.toolbarTabs button { position: relative; border: 0; padding: 0 13px; color: #68778a; background: transparent; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; }
+.toolbarTabs .activeTab { color: #a81948; }
+.toolbarTabs .activeTab::after { position: absolute; right: 0; bottom: -1px; left: 0; height: 3px; border-radius: 3px 3px 0 0; content: ''; background: #a81948; }
+.exportButton { background: #078e68; }
+
+.tableSection { margin-top: 16px; border: 1px solid #e0e5eb; border-radius: 11px; background: #fff; box-shadow: 0 3px 10px rgba(39, 56, 75, .04); overflow: hidden; }
+.tableHeader { display: flex; align-items: center; justify-content: space-between; padding: 16px 19px 13px; }
+.tableHeader h2 { margin: 0; color: #8f173f; font-size: 15px; font-weight: 800; }
+.tableHeader p { margin: 5px 0 0; color: #7b8796; font-size: 11px; }
+.tableHeader > span { color: #7c8795; font-size: 11px; }
+.tableWrap { overflow-x: auto; }
+table { width: 100%; min-width: 900px; border-collapse: collapse; }
+th, td { border: 1px solid #d6dee8; padding: 9px 10px; text-align: center; font-size: 11px; }
+th { color: #46576c; background: #edf2f7; font-size: 10px; font-weight: 800; }
+th small { display: block; margin-top: 3px; color: #718094; font-size: 9px; font-weight: 600; text-transform: none; }
+th:first-child, td:first-child { width: 45px; }
+td:first-child { color: #8793a1; }
+td:nth-child(2) { min-width: 145px; text-align: left; }
+td strong, td small { display: block; }
+td strong { color: #2b3d53; font-size: 11px; }
+td small { margin-top: 3px; color: #96a0ad; font-size: 9px; }
+tbody tr:hover { background: #fbfcfd; }
+.totalRow td { color: #96193f; background: #fff1f3; font-weight: 800; }
+.totalRow td:first-child { text-align: left; }
+.increase { color: #07875d !important; }
+.decrease { color: #d02e4b !important; }
+.empty { padding: 42px; color: #9aa4b1; text-align: center !important; }
+.definition { margin: 12px 2px 0; color: #778494; font-size: 10px; }
+
+@media (max-width: 900px) {
+  .controlPanel { flex-wrap: wrap; gap: 14px; }
+  .viewMode { flex-basis: 100%; order: 3; }
+  .summaryGrid { gap: 10px; }
+}
+@media (max-width: 620px) {
+  .reportPage { padding: 15px 10px 28px; }
+  .pageHeader { align-items: start; flex-direction: column; gap: 6px; }
+  .controlPanel label { flex: 1 1 calc(50% - 8px); }
+  .controlPanel input { width: 100%; }
+  .refreshButton { width: 100%; }
+  .summaryGrid { grid-template-columns: 1fr; gap: 10px; }
+  .reportToolbar { align-items: stretch; flex-direction: column; gap: 8px; }
+  .toolbarTabs { min-height: 42px; overflow-x: auto; }
+  .exportButton { align-self: flex-end; }
+  .tableHeader { align-items: start; gap: 8px; }
+}

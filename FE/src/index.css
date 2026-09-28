@@ -1,0 +1,76 @@
+@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+  --base-font: 'Be Vietnam Pro', 'Segoe UI', Tahoma, Geneva, Verdana, system-ui, sans-serif;
+  font-family: var(--base-font);
+  line-height: 1.5;
+  font-weight: 400;
+
+  /* Giữ lại các cài đặt màu sắc và font chữ toàn cục */
+  color: #213547;
+  background-color: #f4f7fa;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* --- FIX: Áp dụng box-sizing cho tất cả các element --- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+body {
+  margin: 0;
+  background-color: var(--body-bg); /* Đảm bảo body có màu nền đúng */
+}
+
+/* --- FIX: Gỡ bỏ các style layout khỏi #root ---
+  #root bây giờ chỉ là một container đơn giản, cho phép các component con (như Layout)
+  toàn quyền kiểm soát layout của chính chúng.
+*/
+#root {
+  min-height: calc(var(--vh, 1vh) * 100);
+}
+
+/* ---------- Responsive utilities & fluid typography ---------- */
+:root {
+  --bp-xs: 520px;
+  --bp-sm: 768px;
+  --bp-md: 1024px;
+  --bp-lg: 1400px;
+}
+
+/* Fluid base font-size using clamp: scales between 14px and 18px */
+html {
+  font-size: clamp(14px, 1.2vw + 12px, 18px);
+}
+
+/* Ensure the root html/body occupy full height so --vh can control visible viewport sizing */
+html, body { height: 100%; }
+
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+/* Helpful utilities */
+.img-fluid { max-width: 100%; height: auto; display: block; }
+.text-truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.visually-hidden { position: absolute !important; height: 1px; width: 1px; overflow: hidden; clip: rect(1px, 1px, 1px, 1px); }
+.btn-responsive { padding: 10px 14px; font-size: 1rem; border-radius: 8px; }
+
+
+/* Global media tweaks */
+@media (max-width: 768px) {
+  :root { --sidebar-width: 0px; }
+  .container { padding-left: 12px; padding-right: 12px; }
+}

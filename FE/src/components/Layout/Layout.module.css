@@ -1,0 +1,521 @@
+:root {
+    --primary-color: #da251d;
+    --sidebar-bg: #212529;
+    --card-bg: #ffffff;
+    --border-color: #dee2e6;
+    --text-color: #333;
+    --sidebar-width: 240px;
+}
+
+.appContainer {
+    display: flex;
+    flex-direction: column;
+    height: calc(var(--vh, 1vh) * 100);
+    background-color: #f8f9fa;
+}
+
+.appSidebar {
+    width: var(--sidebar-width);
+    background-color: rgb(174, 28, 63);
+    color: white;
+    height: calc(var(--vh, 1vh) * 100);
+    flex-shrink: 0;
+    padding-top: 10px;
+    position: fixed;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    top: 0;
+    left: 0;
+    font-size: 15px;
+}
+
+.logo {
+    padding: 10px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.logo img {
+    max-width: 100%;
+    height: auto;
+    max-height: 60px;
+}
+.sidebarCenter{
+    flex-grow: 1;
+    scrollbar-width: none;
+}
+.navList {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    margin-top: 20px;
+}
+.navList_li{
+    padding-left: 5%;
+    padding-right: 5%;
+    margin-bottom: 5px;
+}
+
+.navList_li a{
+    cursor: pointer;
+}
+
+.navList a {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 12px;
+    border-radius: 10px;
+    color: white;
+    text-decoration: none;
+    transition: background-color 0.2s;
+}
+
+.navList a.active {
+    background-color: rgb(216, 64, 100);
+    position: relative; /* positioning context for dropdown anchored to this button */
+}
+
+.navList_jus{
+    justify-content: space-between;
+}
+
+.navList a:hover {
+    background-color: rgb(219, 84, 115);
+    border-radius: 10px;
+    color: white;
+}
+
+.icon {
+    width: 20px;
+    height: 20px;
+}
+
+.mainWrapper {
+    flex-grow: 1;
+    margin-left: var(--sidebar-width);
+}
+
+.mainContent {
+    padding: 24px;
+}
+
+.appHeader {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 0 24px;
+    height: 64px;
+    background-color: var(--card-bg);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.userMenu {
+    position: relative;
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 6px;
+}
+
+.dropdownContent {
+    position: absolute;
+    /* place the popup directly under the centered span inside the button */
+    top: calc(83% - 30px);
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: var(--card-bg);
+    min-width: 160px;
+    box-shadow: 0px 8px 16px 0px rgba(0, 0, 0, 0.2);
+    z-index: 1200;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+}
+
+.dropdownContent a {
+    color: var(--text-color);
+    padding: 12px 16px;
+    text-decoration: none;
+    display: flex;
+    justify-content: left;
+    align-items: center;
+}
+
+.dropdownContent a:hover {
+    background-color: #f1f1f1;
+}
+
+/* --- CSS MỚI CHO MODAL --- */
+
+.modalBackdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    /* ensure modal overlays sidebar, overlays, and hamburger */
+    z-index: 99999;
+    padding: 16px; /* breathing room on very small screens */
+    box-sizing: border-box;
+}
+
+.modalContent {
+    background: white;
+    border-radius: 8px;
+    width: 100%;
+    max-width: 680px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    box-sizing: border-box;
+    margin: 8px; /* additional margin so content doesn't touch edges */
+}
+
+.modalHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    border-bottom: 1px solid #dee2e6;
+}
+.modalHeader h2 {
+    margin: 0;
+    font-size: 18px;
+}
+.closeButton {
+    background: none;
+    border: none;
+    font-size: 28px;
+    line-height: 1;
+    cursor: pointer;
+    color: #6c757d;
+}
+
+.modalBody {
+    padding: 24px;
+}
+
+.formGroup {
+    margin-bottom: 16px;
+}
+.formGroup label {
+    display: block;
+    font-weight: 500;
+    margin-bottom: 8px;
+}
+.formGroup input, .formGroup select {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.modalFooter {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 24px;
+    border-top: 1px solid #dee2e6;
+}
+.modalFooter button {
+    padding: 10px 20px;
+    border-radius: 6px;
+    border: none;
+    font-weight: bold;
+    cursor: pointer;
+}
+.cancelButton {
+    background-color: #e9ecef;
+    color: #333;
+}
+.saveButton {
+    background-color: #DA251D;
+    color: white;
+}
+.sidebarNav {
+    padding: 20px;
+    border-top: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.navBtn {
+    width: 100%;
+    background: #5f2d2d;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.navBtn:hover {
+    background: #714444;
+}
+
+
+.icon {
+    font-size: 20px;
+}
+
+.sidebarSpan{
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.sidebarSpanStrong{
+    padding-left: 1vh;
+    font-size: 14px;
+}
+
+
+
+/* wrapper chứa link + ellipsis */
+.navItemWrapper {
+    align-items: center;
+
+}
+
+/* link */
+.navLink {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    flex: 1;
+}
+.navTitle {
+    display: inline-block;
+    max-width: 180px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ellipsis button (3 dots) */
+.ellipsisWrapper {
+    margin-left: 8px;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    visibility: hidden; /* mặc định ẩn, hiện khi hover parent */
+}
+
+/* Hiện nút 3 chấm khi hover item (parent li) */
+.navItemWrapper:hover .ellipsisWrapper {
+    visibility: visible;
+}
+
+.ellipsisBtn {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    border-radius: 4px;
+    color: white;
+}
+
+/* popup menu */
+.menuPop {
+    position: absolute;
+    right: 0;
+    top: 27px;
+    min-width: 140px;
+    background: white;
+    border: 1px solid rgba(0,0,0,0.08);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    border-radius: 6px;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.menuItem, .menuItemDanger {
+    padding: 8px 12px;
+    background: transparent;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+}
+
+.menuItem:hover { background: rgba(0,0,0,0.04); }
+.menuItemDanger { color: #d9534f; }
+.menuItemDanger:hover { background: rgba(217,83,79,0.08); }
+
+.editInput {
+    border: none;
+    outline: none;
+    padding: 4px 6px;
+    font-size: 16px;
+    width: 100%;
+    color: white;
+    background-color: inherit;
+}
+
+/* Selection color for inputs (WebKit + Firefox) */
+.editInput::selection,
+input::selection,
+textarea::selection {
+    background: #d48989; /* brand red */
+    color: #ffffff;
+}
+.editInput::-moz-selection,
+input::-moz-selection,
+textarea::-moz-selection {
+    background: #d48989;
+    color: #ffffff;
+}
+
+/* ---------- Responsive layout tweaks for Layout component ---------- */
+@media (max-width: 1024px) {
+    .appSidebar { width: 200px; }
+    .mainWrapper { margin-left: 200px; }
+    .appHeader { padding: 0 16px; }
+    .sidebarCenter{ font-size: 15px;}
+    .sidebarSpan{ font-size: 14px;}
+    .dropdownContent{ top: calc(83% - 40px)}
+}
+
+@media (max-width: 768px) {
+    /* Keep sidebar structure (vertical) same as desktop when opened.
+       Default (closed) state will be off-canvas; when opened it will display
+       the full desktop-like sidebar content. Only tweak content padding here. */
+    .mainWrapper { margin-left: 0; }
+    .mainContent { padding: 12px; }
+    .logo img { max-height: 44px; }
+    .dropdownContent{ top: calc(83% - 30px)}
+    .cancelButton { font-size: 15px;}
+    .saveButton { font-size: 15px;}
+}
+
+@media (max-width: 520px) {
+    .navList a { padding: 8px; font-size: 13px; }
+    .appHeader { height: auto; padding: 8px; }
+    .menuPop { min-width: 120px; }
+}
+
+/* Mobile hamburger and overlay styles */
+.mobileHamburger {
+    display: none; /* shown only on small screens */
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    width: 35px;
+    height: 30px;
+    padding: 6px;
+    border-radius: 8px;
+    border: none;
+    background: rgba(0,0,0,0.04);
+    z-index: 3001;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+.mobileHamburger:focus { outline: none; box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12); }
+.hamburgerBar {
+    display: block;
+    width: 22px;
+    height: 2px;
+    background: #fff;
+    background: currentColor;
+    margin: 3px 0;
+    border-radius: 2px;
+}
+
+/* keep transition on the base so it animates in both directions */
+.mobileHamburger {
+    transition: left 220ms ease, transform 220ms ease;
+    transform: translateX(0);
+}
+
+/* When sidebar is open, shift the hamburger to the right of the sidebar */
+.hamburgerShifted {
+    /* default shift uses CSS variable; overridden in mobile media query below */
+    left: calc(var(--sidebar-width) + 16px);
+    z-index: 3003; /* ensure above sidebar */
+    transform: translateX(0);
+}
+
+/* overlay covers content when sidebar open */
+.overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0);
+    z-index: 1500;
+    opacity: 0;
+    transition: opacity 200ms ease, background 200ms ease;
+    pointer-events: none;
+}
+.overlayVisible {
+    background: rgba(0,0,0,0.45);
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* Ensure overlay doesn't block touches when hidden and plays nicely with mobile taps */
+.overlay {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+/* Sidebar behavior on small screens: hidden by default and slides in when open */
+
+@media (max-width: 768px) {
+    .mobileHamburger { display: flex; color: #fff; background: rgba(0,0,0,0.35); }
+
+    .appSidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: calc(var(--vh, 1vh) * 100);
+        width: 280px;
+        transform: translateX(-110%);
+        transition: transform 220ms ease;
+        z-index: 2002;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+    }
+
+    /* When closed, ensure sidebar doesn't capture pointer events */
+    .appSidebar:not(.sidebarOpen) {
+        pointer-events: none;
+    }
+
+    /* mobile-specific shifted position: place hamburger to the right of the 280px sidebar */
+    .hamburgerShifted {
+        left: calc(280px + 12px);
+        top: 12px;
+        z-index: 3003;
+    }
+
+    /* when the aside has sidebarOpen class it will slide into view */
+    .sidebarOpen {
+        transform: translateX(0) !important;
+    }
+
+    /* ensure main content is scrollable underneath */
+    .mainWrapper { position: relative; }
+
+    .modalContent {font-size: 14px; max-width: 350px;}
+    .modalBody { padding: 15px;}
+    .modalFooter { padding: 16px 20px;}
+    .sidebarSpanStrong{ font-size: 13px; }
+}
+
+@media (max-width: 520px) {
+    .modalContent {font-size: 14px; max-width: 330px;}
+}
+
+
+
