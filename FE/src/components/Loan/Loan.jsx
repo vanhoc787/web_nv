@@ -5,6 +5,7 @@ import { API_ENDPOINTS } from '../../config/api';
 import styles from './Loan.module.css';
 
 const STATUS_OPTIONS = ['', 'Đang vay', 'Đã gia hạn', 'Đã tất toán'];
+const fullBalanceFormat = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 });
 
 function Loan() {
     const navigate = useNavigate();
@@ -16,10 +17,14 @@ function Loan() {
     const [page, setPage] = useState(1);
     const [loading, setLoading] = useState(true);
     const [selectedLoan, setSelectedLoan] = useState(null);
+    const [detailColumns, setDetailColumns] = useState([]);
+    const [detailLoading, setDetailLoading] = useState(false);
+    const [otherColumnsOpen, setOtherColumnsOpen] = useState(false);
     const token = localStorage.getItem('token');
     
     // Lưu trữ controller để hủy request cũ (Chống Race Condition)
     const abortControllerRef = useRef(null);
+    const detailControllerRef = useRef(null);
 
     // TỐI ƯU HÓA 1: Chỉ parse JWT 1 lần duy nhất
     const canEdit = useMemo(() => {
@@ -109,8 +114,51 @@ function Loan() {
         }
     };
 
+    const openLoanDetails = useCallback(async (loan) => {
+        detailControllerRef.current?.abort();
+        const controller = new AbortController();
+        detailControllerRef.current = controller;
+        setSelectedLoan({ ...loan });
+        setDetailColumns([]);
+        setOtherColumnsOpen(false);
+        setDetailLoading(true);
+
+        try {
+            const response = await fetch(`${API_ENDPOINTS.LOANS.LIST}/${loan.id}`, {
+                headers: { Authorization: `Bearer ${token}` },
+                signal: controller.signal,
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.detail || 'Không thể tải chi tiết khoản vay.');
+            setSelectedLoan(result.loan || result);
+            setDetailColumns(result.columns || []);
+        } catch (error) {
+            if (error.name !== 'AbortError') toast.error(error.message);
+        } finally {
+            if (detailControllerRef.current === controller) {
+                detailControllerRef.current = null;
+                setDetailLoading(false);
+            }
+        }
+    }, [token]);
+
+    const closeLoanDetails = () => {
+        detailControllerRef.current?.abort();
+        detailControllerRef.current = null;
+        setDetailLoading(false);
+        setSelectedLoan(null);
+    };
+
     const summary = data.summary || {};
-    const formatMoney = (value) => `${Number(value || 0).toLocaleString('vi-VN')} đ`;
+    const formatBalance = (value) => {
+        const amount = Number(value || 0);
+        const isTrillion = amount >= 1_000_000_000_000;
+        const formattedAmount = new Intl.NumberFormat('vi-VN', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        }).format(amount / (isTrillion ? 1_000_000_000_000 : 1_000_000_000));
+        return `${formattedAmount} ${isTrillion ? 'nghìn tỷ' : 'tỷ'} đồng`;
+    };
     const balanceCards = [
         ['Tổng dư nợ hiện tại', summary.total_outstanding, 'balanceTotal'],
         ['Dư nợ khách hàng cá nhân', summary.individual_outstanding, 'balanceIndividual'],
@@ -124,15 +172,22 @@ function Loan() {
         ['Đã tất toán', summary.closed ?? 0, 'closed', 'closed'],
     ];
 
-    // TỐI ƯU HÓA 3: Tách hàm click ra ngoài vòng lặp
-    const handleRowDoubleClick = useCallback((loan) => {
-        setSelectedLoan({ ...loan });
-    }, []);
-
     // TỐI ƯU HÓA 4: Cache lại Body của Table
     const tableBody = useMemo(() => {
         return data.loans.map((loan, index) => (
-            <tr key={loan.id} onDoubleClick={() => handleRowDoubleClick(loan)}>
+            <tr
+                key={loan.id}
+                className={styles.loanRow}
+                tabIndex={0}
+                aria-label={`Xem chi tiết khoản vay ${loan.CUSTSEQ || ''}`}
+                onClick={() => openLoanDetails(loan)}
+                onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        openLoanDetails(loan);
+                    }
+                }}
+            >
                 {data.columns.map((column) => (
                     <td key={column.key} className={styles[`column_${column.key}`]} title={column.key === '__serial__' ? undefined : String(loan[column.key] ?? '')}>
                         {column.key === '__serial__'
@@ -144,7 +199,28 @@ function Loan() {
                 ))}
             </tr>
         ));
-    }, [data.loans, data.columns, page, handleRowDoubleClick]);
+    }, [data.loans, data.columns, page, openLoanDetails]);
+
+    const modalColumns = detailColumns.length ? detailColumns : data.columns;
+    const detailColumn = (header) => modalColumns.find((column) => column.key.toUpperCase() === header);
+    const maturityDetailColumn = detailColumn('APPRMATDT') || detailColumn('DSBSMATDT');
+    const primaryDetailColumns = [
+        detailColumn('CUSTSEQ'),
+        detailColumn('CUSTNM'),
+        detailColumn('DISBURSEMENT_AMOUNT'),
+        detailColumn('DU_NO'),
+        detailColumn('DSBSDT'),
+        maturityDetailColumn,
+        detailColumn('LOAN_TYPE'),
+        detailColumn('DSBSSEQ'),
+    ].filter(Boolean);
+    const primaryDetailKeys = new Set(primaryDetailColumns.map((column) => column.key));
+    const hiddenDetailKeys = new Set(['id', 'status', 'gdv', 'gdv_note', 'days_to_due', '__serial__']);
+    const otherDetailColumns = modalColumns.filter((column) => (
+        !primaryDetailKeys.has(column.key) && !hiddenDetailKeys.has(column.key)
+    ));
+    const customerCode = selectedLoan?.[detailColumn('CUSTSEQ')?.key] || '';
+    const customerName = selectedLoan?.[detailColumn('CUSTNM')?.key] || '';
 
     return (
         <section className={styles.loanPage}>
@@ -157,9 +233,14 @@ function Loan() {
             
             <div className={styles.balanceGrid}>
                 {balanceCards.map(([label, value, tone]) => (
-                    <article className={`${styles.summaryCard} ${styles.balanceCard} ${styles[tone]}`} key={label}>
+                    <article
+                        className={`${styles.summaryCard} ${styles.balanceCard} ${styles[tone]}`}
+                        key={label}
+                        title={`${fullBalanceFormat.format(Number(value || 0))} đồng`}
+                        aria-label={`${label}: ${fullBalanceFormat.format(Number(value || 0))} đồng`}
+                    >
                         <span>{label}</span>
-                        <strong>{formatMoney(value)}</strong>
+                        <strong>{formatBalance(value)}</strong>
                         <small>Trên toàn bộ danh mục</small>
                     </article>
                 ))}
@@ -259,43 +340,83 @@ function Loan() {
 
             {/* MODAL CHI TIẾT */}
             {selectedLoan && (
-                <div className={styles.modalBackdrop} onMouseDown={(event) => event.target === event.currentTarget && setSelectedLoan(null)}>
+                <div className={styles.modalBackdrop} onMouseDown={(event) => event.target === event.currentTarget && closeLoanDetails()}>
                     <form className={styles.modal} onSubmit={canEdit ? updateLoan : (event) => event.preventDefault()}>
                         <div className={styles.modalHeader}>
                             <div>
-                                <p className={styles.modalEyebrow}>HỒ SƠ KHOẢN VAY</p>
-                                <h2>Chi tiết khoản vay</h2>
+                                <h2>Cập nhật khoản vay</h2>
+                                <p>{customerName || 'Hồ sơ khoản vay'}{customerCode ? ` · '${customerCode}'` : ''}</p>
                             </div>
-                            <button type="button" className={styles.closeButton} onClick={() => setSelectedLoan(null)} aria-label="Đóng">×</button>
+                            <button type="button" className={styles.closeButton} onClick={closeLoanDetails} aria-label="Đóng">×</button>
                         </div>
-                        
-                        <div className={styles.detailGrid}>
-                            {data.columns.filter((column) => !['__serial__', 'status', 'gdv', 'gdv_note', 'days_to_due'].includes(column.key)).map((column) => (
-                                <div className={styles.detailItem} key={column.key}>
-                                    <span>{column.label}</span>
-                                    <strong>{selectedLoan[column.key] || '-'}</strong>
+                        <div className={styles.modalBody}>
+                            <div className={styles.detailGrid}>
+                                {primaryDetailColumns.map((column) => {
+                                    const value = selectedLoan[column.key];
+                                    return <div className={styles.detailItem} key={column.key} title={value == null ? '' : String(value)}>
+                                        <span>{column.label}</span>
+                                        <strong>{value == null || value === '' ? '-' : String(value)}</strong>
+                                    </div>;
+                                })}
+                            </div>
+
+                            <section className={styles.otherColumnsSection}>
+                                <button
+                                    type="button"
+                                    className={styles.otherColumnsToggle}
+                                    aria-expanded={otherColumnsOpen}
+                                    onClick={() => setOtherColumnsOpen((open) => !open)}
+                                >
+                                    <span aria-hidden="true">{otherColumnsOpen ? '▾' : '▸'}</span>
+                                    Cột khác trong file ({otherDetailColumns.length})
+                                    {detailLoading && <small>Đang tải...</small>}
+                                </button>
+                                {otherColumnsOpen && <div className={styles.otherColumnsGrid}>
+                                    {otherDetailColumns.map((column) => {
+                                        const value = selectedLoan[column.key];
+                                        return <div className={styles.detailItem} key={column.key} title={value == null ? '' : String(value)}>
+                                            <span>{column.label}</span>
+                                            <strong>{value == null || value === '' ? '-' : String(value)}</strong>
+                                        </div>;
+                                    })}
+                                </div>}
+                            </section>
+
+                            <section className={styles.statusSection}>
+                                <h3>Trạng thái</h3>
+                                <div className={styles.statusOptions} role="group" aria-label="Trạng thái khoản vay">
+                                    {STATUS_OPTIONS.slice(1).map((status) => (
+                                        <button
+                                            key={status}
+                                            type="button"
+                                            className={`${styles.statusOption} ${selectedLoan.status === status ? styles.statusOptionActive : ''}`}
+                                            aria-pressed={selectedLoan.status === status}
+                                            disabled={!canEdit}
+                                            onClick={() => setSelectedLoan({ ...selectedLoan, status })}
+                                        >
+                                            {status}
+                                        </button>
+                                    ))}
                                 </div>
-                            ))}
-                        </div>
-                        
-                        <div className={styles.editGrid}>
-                            <label>Trạng thái
-                                <select disabled={!canEdit} value={selectedLoan.status || STATUS_OPTIONS[1]} onChange={(event) => setSelectedLoan({ ...selectedLoan, status: event.target.value })}>
-                                    {STATUS_OPTIONS.slice(1).map((status) => <option key={status}>{status}</option>)}
-                                </select>
-                            </label>
-                            <label>GDV phụ trách
-                                <input readOnly value={selectedLoan.gdv || '-'} />
-                            </label>
-                            <label className={styles.noteField}>Ghi chú
-                                <textarea readOnly={!canEdit} value={selectedLoan.gdv_note || ''} onChange={(event) => setSelectedLoan({ ...selectedLoan, gdv_note: event.target.value })} placeholder="Nhập ghi chú xử lý khoản vay..." />
+                                {selectedLoan.gdv && <small className={styles.assignedOfficer}>GDV phụ trách: {selectedLoan.gdv}</small>}
+                            </section>
+
+                            <label className={styles.noteField}>Ghi chú / lý do
+                                <textarea
+                                    maxLength={2000}
+                                    readOnly={!canEdit}
+                                    value={selectedLoan.gdv_note || ''}
+                                    onChange={(event) => setSelectedLoan({ ...selectedLoan, gdv_note: event.target.value })}
+                                    placeholder="Lý do khách dừng vay, điều khoản gia hạn, việc cần theo dõi..."
+                                />
+                                <small className={styles.noteCount}>{(selectedLoan.gdv_note || '').length}/2000</small>
                             </label>
                         </div>
-                        
+
                         <div className={styles.modalFooter}>
-                            {!canEdit && <span className={styles.readOnlyHint}>Tài khoản KS chỉ có quyền xem</span>}
-                            <button type="button" onClick={() => setSelectedLoan(null)}>Đóng</button>
-                            {canEdit && <button type="submit" className={styles.searchButton}>Lưu cập nhật</button>}
+                            {!canEdit && <span className={styles.readOnlyHint}>Tài khoản chỉ có quyền xem</span>}
+                            <button type="button" onClick={closeLoanDetails}>Huỷ</button>
+                            {canEdit && <button type="submit" className={styles.searchButton} disabled={detailLoading}>Lưu cập nhật</button>}
                         </div>
                     </form>
                 </div>

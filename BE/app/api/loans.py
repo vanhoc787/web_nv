@@ -5,7 +5,7 @@ from sqlmodel import Session, select
 from ..core.database import get_session
 from ..core.security import validate_token
 from ..models.user import User
-from ..services.loan_service import get_loan, import_loan_files, list_loans, update_loan
+from ..services.loan_service import get_loan_detail_data, import_loan_files, list_loans, update_loan
 
 router = APIRouter()
 
@@ -39,7 +39,7 @@ def get_loans(
 
 @router.get('/loans/{loan_id}')
 def get_loan_detail(loan_id: int, _: str = Depends(validate_token)):
-    return get_loan(loan_id)
+    return get_loan_detail_data(loan_id)
 
 
 @router.patch('/loans/{loan_id}')

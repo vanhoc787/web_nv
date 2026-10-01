@@ -5,7 +5,7 @@ import re
 import unicodedata
 from datetime import date, datetime
 from typing import Any
-from sqlalchemy import and_, case, distinct, false, func
+from sqlalchemy import and_, case, distinct, false, func, or_, true
 
 import pandas as pd
 from fastapi import HTTPException, UploadFile
@@ -21,18 +21,20 @@ ACTIVITY_TABLE_NAME = 'loan_activities_status'
 BATCH_SIZE = 500
 REQUIRED_IMPORT_COLUMNS = {
     'BRCD', 'CUSTSEQ', 'CUSTNM', 'DISBURSEMENT_AMOUNT', 'DU_NO',
-    'LOAN_TYPE', 'CUSTOMER_TYPE_CODE', 'ADDR1', 'DSBSDT', 'DSBSMATDT', 'INTTRMMTH',
+    'LOAN_TYPE', 'CUSTOMER_TYPE_CODE', 'ADDR1', 'DSBSDT', 'INTTRMMTH',
 }
+MATURITY_DATE_HEADERS = ('APPRMATDT', 'DSBSMATDT', 'DUE_DATE', 'MATURITY_DATE', 'NGAY_DEN_HAN', 'NGAY_TO_HAN', 'NGAY_DAO_HAN')
 MAPPED_HEADER_KEYS = {
     'BRCD', 'CUSTSEQ', 'CUSTNM', 'DISBURSEMENT_AMOUNT', 'DU_NO',
-    'LOAN_TYPE', 'CUSTOMER_TYPE_CODE', 'ADDR1', 'DSBSDT', 'DSBSMATDT', 'INTTRMMTH',
+    'LOAN_TYPE', 'CUSTOMER_TYPE_CODE', 'ADDR1', 'DSBSDT', 'DSBSMATDT', 'APPRMATDT', 'INTTRMMTH',
     'NHOM_NO', 'LAST_REPAY_DATE', 'NEXT_REPAY_DATE', 'PASTDUE_INTEREST_AMOUNT',
     'TOTAL_INTEREST_REPAY_AMOUNT',
 }
 HEADER_LABELS = {
     'BRCD': 'Mã chi nhánh', 'CUSTSEQ': 'Mã khách hàng', 'CUSTNM': 'Tên khách hàng',
     'DISBURSEMENT_AMOUNT': 'Số tiền vay', 'DU_NO': 'Dư nợ gốc', 'LOAN_TYPE': 'Loại khoản vay',
-    'ADDR1': 'Địa chỉ', 'DSBSDT': 'Ngày bắt đầu vay', 'DSBSMATDT': 'Ngày đến hạn',
+    'ADDR1': 'Địa chỉ', 'DSBSDT': 'Ngày bắt đầu vay', 'DSBSMATDT': 'Ngày đáo hạn giải ngân', 'APPRMATDT': 'Ngày đáo hạn phê duyệt',
+    'DSBSSEQ': 'Mã giải ngân',
     'INTTRMMTH': 'Thời hạn', 'CUSTOMER_TYPE_CODE': 'Mã loại khách hàng', 'NHOM_NO': 'Nhóm nợ', 'LAST_REPAY_DATE': 'Ngày trả nợ gần nhất',
     'NEXT_REPAY_DATE': 'Ngày trả nợ tiếp theo',
     'PASTDUE_INTEREST_AMOUNT': 'Lãi quá hạn',
@@ -98,7 +100,7 @@ def _configure_headers(headers: list[str]) -> None:
         column_keys.append(key)
     loan_dsbsseq_column = next((key for header, key in zip(original_headers, column_keys) if header.upper() == 'DSBSSEQ'), None)
     loan_due_date_column = None
-    candidates = ('DSBSMATDT', 'DSBSDT', 'DUE_DATE', 'MATURITY_DATE', 'NGAY_DEN_HAN', 'NGAY_TO_HAN', 'NGAY_DAO_HAN')
+    candidates = (*MATURITY_DATE_HEADERS, 'DSBSDT')
     for candidate in candidates:
         for header, key in zip(original_headers, column_keys):
             if header.upper() == candidate or candidate.lower() in header.lower():
@@ -231,7 +233,7 @@ def _format_value(key: str, value: Any) -> Any:
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return ''
     upper = key.upper()
-    if upper in {'DSBSDT', 'DSBSMATDT', 'LAST_REPAY_DATE', 'NEXT_REPAY_DATE'}:
+    if upper in {'DSBSDT', 'DSBSMATDT', 'APPRMATDT', 'LAST_REPAY_DATE', 'NEXT_REPAY_DATE'}:
         parsed = _parse_date(value)
         return parsed.strftime('%d/%m/%Y') if parsed else ''
     if upper in {'DISBURSEMENT_AMOUNT', 'DU_NO'}:
@@ -311,6 +313,15 @@ def _customer_type_expression(table: Table):
     )
 
 
+def _maturity_date_expression(table: Table):
+    apprmatdt_key = _key_for_header('APPRMATDT')
+    if apprmatdt_key and apprmatdt_key in table.c:
+        return cast(table.c[apprmatdt_key], Date)
+    if loan_due_date_column and loan_due_date_column in table.c:
+        return cast(table.c[loan_due_date_column], Date)
+    return None
+
+
 def _key_for_header(header: str) -> str | None:
     normalized = header.strip().upper()
     return next((key for original, key in zip(original_headers, column_keys) if original.upper() == normalized), None)
@@ -348,13 +359,41 @@ def _is_closed_loan(row: dict[str, Any]) -> bool:
     return all(key is not None for key in amount_keys) and all(_report_number(row.get(key)) == 0 for key in amount_keys)
 
 
+def _is_active_loan_at(
+    row: dict[str, Any],
+    cutoff: date,
+    disbursement_key: str | None,
+    maturity_key: str | None,
+) -> bool:
+    disbursement_date = _report_date(row.get(disbursement_key)) if disbursement_key else None
+    if disbursement_date is None or disbursement_date > cutoff:
+        return False
+    maturity_date = _report_date(row.get(maturity_key)) if maturity_key else None
+    return not (_is_closed_loan(row) and maturity_date is not None and maturity_date <= cutoff)
+
+
+def _missing_import_columns(headers: list[str]) -> list[str]:
+    normalized_headers = {header.upper() for header in headers}
+    missing = REQUIRED_IMPORT_COLUMNS - normalized_headers
+    if not normalized_headers.intersection(MATURITY_DATE_HEADERS):
+        missing.add('APPRMATDT hoặc DSBSMATDT')
+    return sorted(missing)
+
+
 
 def loan_report(from_date: date, to_date: date) -> dict[str, Any]:
     table = _ensure_loan_table()
     if table is None:
-        return {'from_date': from_date.isoformat(), 'to_date': to_date.isoformat(), 'from': {}, 'to': {}, 'change': {}, 'branches': []}
+        empty = {'total': 0, 'individual': 0, 'legal_entity': 0, 'closed': 0, 'active': 0}
+        movements = {'total': 0, 'individual': 0, 'legal_entity': 0}
+        return {
+            'from_date': from_date.isoformat(), 'to_date': to_date.isoformat(),
+            'from': empty.copy(), 'to': empty.copy(), 'change': empty.copy(),
+            'increase': movements.copy(), 'decrease': movements.copy(), 'branches': [],
+        }
 
     date_key = _key_for_header('DSBSDT')
+    maturity_key = next((_key_for_header(header) for header in MATURITY_DATE_HEADERS if _key_for_header(header)), None)
     customer_key = _key_for_header('CUSTSEQ')
     type_key = _key_for_header('CUSTOMER_TYPE_CODE')
     branch_key = _key_for_header('BRCD')
@@ -366,7 +405,8 @@ def loan_report(from_date: date, to_date: date) -> dict[str, Any]:
         return {
             'from_date': from_date.isoformat(), 'to_date': to_date.isoformat(),
             'from': empty.copy(), 'to': empty.copy(),
-            'change': empty.copy(), 'branches': [],
+            'change': empty.copy(), 'increase': {'total': 0, 'individual': 0, 'legal_entity': 0},
+            'decrease': {'total': 0, 'individual': 0, 'legal_entity': 0}, 'branches': [],
         }
 
     date_col = cast(table.c[date_key], Date)
@@ -378,17 +418,37 @@ def loan_report(from_date: date, to_date: date) -> dict[str, Any]:
         raw_amount = func.regexp_replace(cast(table.c[key], String), '[^0-9.-]', '', 'g')
         return cast(func.nullif(raw_amount, ''), Numeric)
 
-    is_closed_cond = and_(*(amount_expression(key) == 0 for key in amount_keys))
+    is_closed_cond = and_(*(func.coalesce(amount_expression(key), 0) == 0 for key in amount_keys))
+    maturity_date_col = cast(table.c[maturity_key], Date) if maturity_key and maturity_key in table.c else None
+
+    def matured_loan_cond(cutoff: date):
+        if maturity_date_col is None:
+            return false()
+        return and_(
+            is_closed_cond,
+            maturity_date_col.is_not(None),
+            maturity_date_col <= cutoff,
+        )
+
+    def active_loan_cond(cutoff: date):
+        active_by_maturity = or_(
+            ~is_closed_cond,
+            maturity_date_col.is_(None),
+            maturity_date_col > cutoff,
+        ) if maturity_date_col is not None else true()
+        return and_(date_col <= cutoff, active_by_maturity)
 
     def build_metrics_sql(cutoff: date, prefix: str):
         time_cond = date_col <= cutoff
+        active_cond = active_loan_cond(cutoff)
+        closed_at_cutoff = and_(time_cond, matured_loan_cond(cutoff))
         
         return {
-            f'{prefix}_total': func.count(distinct(case((time_cond, cust_col), else_=None))).label(f'{prefix}_total'),
-            f'{prefix}_individual': func.count(distinct(case((and_(time_cond, type_col == '100'), cust_col), else_=None))).label(f'{prefix}_individual'),
-            f'{prefix}_legal_entity': func.count(distinct(case((and_(time_cond, type_col.in_(['520', '530'])), cust_col), else_=None))).label(f'{prefix}_legal_entity'),
-            f'{prefix}_closed': func.count(case((and_(time_cond, is_closed_cond), table.c.id), else_=None)).label(f'{prefix}_closed'),
-            f'{prefix}_active': func.count(case((and_(time_cond, ~is_closed_cond), table.c.id), else_=None)).label(f'{prefix}_active'),
+            f'{prefix}_total': func.count(distinct(case((active_cond, cust_col), else_=None))).label(f'{prefix}_total'),
+            f'{prefix}_individual': func.count(distinct(case((and_(active_cond, type_col == '100'), cust_col), else_=None))).label(f'{prefix}_individual'),
+            f'{prefix}_legal_entity': func.count(distinct(case((and_(active_cond, type_col.in_(['520', '530'])), cust_col), else_=None))).label(f'{prefix}_legal_entity'),
+            f'{prefix}_closed': func.count(case((closed_at_cutoff, table.c.id), else_=None)).label(f'{prefix}_closed'),
+            f'{prefix}_active': func.count(case((active_cond, table.c.id), else_=None)).label(f'{prefix}_active'),
         }
 
     from_metrics = build_metrics_sql(from_date, 'from')
@@ -400,12 +460,42 @@ def loan_report(from_date: date, to_date: date) -> dict[str, Any]:
         *to_metrics.values()
     ).group_by(branch_col)
 
+    def build_transition_query(include_branch: bool):
+        grouped_branch = branch_col.label('branch')
+        branch_group = [grouped_branch] if include_branch else []
+        customer_group = [*branch_group, cust_col, type_col]
+        active_customers = select(
+            *customer_group,
+            func.max(case((active_loan_cond(from_date), 1), else_=0)).label('from_active'),
+            func.max(case((active_loan_cond(to_date), 1), else_=0)).label('to_active'),
+        ).where(date_col <= to_date).group_by(*customer_group).subquery()
+
+        added = and_(active_customers.c.from_active == 0, active_customers.c.to_active == 1)
+        removed = and_(active_customers.c.from_active == 1, active_customers.c.to_active == 0)
+        metrics = {}
+        for label, condition in (('increase', added), ('decrease', removed)):
+            metrics[f'{label}_total'] = func.count(distinct(case((condition, active_customers.c[customer_key]), else_=None))).label(f'{label}_total')
+            metrics[f'{label}_individual'] = func.count(distinct(case((and_(condition, active_customers.c[type_key] == '100'), active_customers.c[customer_key]), else_=None))).label(f'{label}_individual')
+            metrics[f'{label}_legal_entity'] = func.count(distinct(case((and_(condition, active_customers.c[type_key].in_(['520', '530'])), active_customers.c[customer_key]), else_=None))).label(f'{label}_legal_entity')
+
+        if include_branch:
+            return select(active_customers.c.branch, *metrics.values()).group_by(active_customers.c.branch)
+        return select(*metrics.values())
+
     with engine.connect() as connection:
         results = connection.execute(query).mappings().all()
+        global_result = connection.execute(
+            select(*from_metrics.values(), *to_metrics.values())
+        ).mappings().one()
+        branch_transitions = connection.execute(build_transition_query(include_branch=True)).mappings().all()
+        global_transitions = connection.execute(build_transition_query(include_branch=False)).mappings().one()
 
     branch_rows = []
-    global_from = {'total': 0, 'individual': 0, 'legal_entity': 0, 'closed': 0, 'active': 0}
-    global_to = {'total': 0, 'individual': 0, 'legal_entity': 0, 'closed': 0, 'active': 0}
+    global_from = {key: global_result[f'from_{key}'] or 0 for key in ('total', 'individual', 'legal_entity', 'closed', 'active')}
+    global_to = {key: global_result[f'to_{key}'] or 0 for key in ('total', 'individual', 'legal_entity', 'closed', 'active')}
+    transitions_by_branch = {row['branch']: row for row in branch_transitions}
+    global_increase = {key: global_transitions[f'increase_{key}'] or 0 for key in ('total', 'individual', 'legal_entity')}
+    global_decrease = {key: global_transitions[f'decrease_{key}'] or 0 for key in ('total', 'individual', 'legal_entity')}
 
     for row in results:
         b_name = row['branch']
@@ -413,11 +503,9 @@ def loan_report(from_date: date, to_date: date) -> dict[str, Any]:
         # Bóc tách số liệu của từng chi nhánh
         b_from = {k: row[f'from_{k}'] or 0 for k in global_from.keys()}
         b_to = {k: row[f'to_{k}'] or 0 for k in global_to.keys()}
-
-        # Cộng dồn số liệu vào tổng toàn hệ thống
-        for k in global_from.keys():
-            global_from[k] += b_from[k]
-            global_to[k] += b_to[k]
+        transition = transitions_by_branch.get(b_name, {})
+        b_increase = {key: transition.get(f'increase_{key}', 0) or 0 for key in ('total', 'individual', 'legal_entity')}
+        b_decrease = {key: transition.get(f'decrease_{key}', 0) or 0 for key in ('total', 'individual', 'legal_entity')}
 
         branch_rows.append({
             'branch_code': b_name,
@@ -425,6 +513,8 @@ def loan_report(from_date: date, to_date: date) -> dict[str, Any]:
             'from': b_from,
             'to': b_to,
             'change': {k: b_to[k] - b_from[k] for k in b_to.keys()},
+            'increase': b_increase,
+            'decrease': b_decrease,
         })
 
     return {
@@ -433,6 +523,8 @@ def loan_report(from_date: date, to_date: date) -> dict[str, Any]:
         'from': global_from,
         'to': global_to,
         'change': {k: global_to[k] - global_from[k] for k in global_to.keys()},
+        'increase': global_increase,
+        'decrease': global_decrease,
         'branches': branch_rows,
     }
 
@@ -441,9 +533,14 @@ def loan_report(from_date: date, to_date: date) -> dict[str, Any]:
 def loan_report_csv(report: dict[str, Any]) -> str:
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['Chi nhánh', 'Mã chi nhánh', 'Mốc 1 - Tổng', 'Mốc 2 - Tổng', 'Tăng/Giảm', 'Mốc 1 - Cá nhân', 'Mốc 2 - Cá nhân', 'Tăng/Giảm cá nhân', 'Mốc 1 - Pháp nhân', 'Mốc 2 - Pháp nhân', 'Tăng/Giảm pháp nhân'])
+    writer.writerow(['Mã CN', 'Chi nhánh', 'Cá nhân - Đầu kỳ', 'Cá nhân - Cuối kỳ', 'Cá nhân - Tăng', 'Cá nhân - Giảm', 'Pháp nhân - Đầu kỳ', 'Pháp nhân - Cuối kỳ', 'Pháp nhân - Tăng', 'Pháp nhân - Giảm', 'Tổng - Đầu kỳ', 'Tổng - Cuối kỳ', 'Tổng - Tăng', 'Tổng - Giảm'])
     for row in report['branches']:
-        writer.writerow([row['branch_name'], row['branch_code'], row['from']['total'], row['to']['total'], row['change']['total'], row['from']['individual'], row['to']['individual'], row['change']['individual'], row['from']['legal_entity'], row['to']['legal_entity'], row['change']['legal_entity']])
+        writer.writerow([
+            row['branch_code'], row['branch_name'],
+            row['from']['individual'], row['to']['individual'], row['increase']['individual'], row['decrease']['individual'],
+            row['from']['legal_entity'], row['to']['legal_entity'], row['increase']['legal_entity'], row['decrease']['legal_entity'],
+            row['from']['total'], row['to']['total'], row['increase']['total'], row['decrease']['total'],
+        ])
     return output.getvalue()
 
 
@@ -463,12 +560,12 @@ def loan_report_xlsx(report: dict[str, Any]) -> bytes:
     center = Alignment(horizontal='center', vertical='center', wrap_text=True)
 
     sheet.merge_cells('A1:K1')
-    sheet['A1'] = 'BÁO CÁO SỐ LƯỢNG KHÁCH HÀNG CỦA CÁC ĐƠN VỊ'
+    sheet['A1'] = 'BÁO CÁO BIẾN ĐỘNG KHÁCH HÀNG VAY VỐN'
     sheet['A1'].fill = PatternFill('solid', fgColor=navy)
     sheet['A1'].font = white_font
     sheet['A1'].alignment = center
     sheet.merge_cells('A2:K2')
-    sheet['A2'] = f"Kỳ báo cáo: {report['to_date']}    |    Kỳ đối chiếu: {report['from_date']}    |    Đơn vị tính: Khách hàng"
+    sheet['A2'] = f"Mốc đầu kỳ: {report['from_date']}    |    Mốc cuối kỳ: {report['to_date']}    |    Đơn vị tính: Khách hàng"
     sheet['A2'].alignment = center
 
     sheet.merge_cells('A4:A5')
@@ -476,15 +573,14 @@ def loan_report_xlsx(report: dict[str, Any]) -> bytes:
     sheet.merge_cells('C4:E4')
     sheet.merge_cells('F4:H4')
     sheet.merge_cells('I4:K4')
-    headers = {
-        'A4': 'STT', 'B4': 'Chi nhánh',
-        'C4': f"Kỳ báo cáo\n({report['to_date']})",
-        'F4': f"Kỳ đối chiếu\n({report['from_date']})",
-        'I4': 'Biến động',
-    }
+    headers = {'A4': 'Mã CN', 'B4': 'Chi nhánh', 'C4': 'CÁ NHÂN', 'F4': 'PHÁP NHÂN', 'I4': 'TỔNG'}
     for cell, value in headers.items():
         sheet[cell] = value
-    subheaders = ['Tổng KH', 'Pháp nhân', 'Cá nhân'] * 2 + ['Tổng (+/-)', 'KHDN (+/-)', 'KHCN (+/-)']
+    subheaders = [
+        f"Đầu kỳ ({report['from_date']})", f"Cuối kỳ ({report['to_date']})", 'Tăng / giảm',
+        f"Đầu kỳ ({report['from_date']})", f"Cuối kỳ ({report['to_date']})", 'Tăng / giảm',
+        f"Đầu kỳ ({report['from_date']})", f"Cuối kỳ ({report['to_date']})", 'Tăng / giảm',
+    ]
     for index, value in enumerate(subheaders, start=3):
         sheet.cell(row=5, column=index, value=value)
     for row in sheet.iter_rows(min_row=4, max_row=5, min_col=1, max_col=11):
@@ -496,10 +592,13 @@ def loan_report_xlsx(report: dict[str, Any]) -> bytes:
 
     for index, branch in enumerate(report.get('branches', []), start=1):
         row = [
-            index, branch['branch_name'],
-            branch['to']['total'], branch['to']['legal_entity'], branch['to']['individual'],
-            branch['from']['total'], branch['from']['legal_entity'], branch['from']['individual'],
-            branch['change']['total'], branch['change']['legal_entity'], branch['change']['individual'],
+            branch['branch_code'], branch['branch_name'],
+            branch['from']['individual'], branch['to']['individual'],
+            f"+{branch['increase']['individual']:,} / -{branch['decrease']['individual']:,}",
+            branch['from']['legal_entity'], branch['to']['legal_entity'],
+            f"+{branch['increase']['legal_entity']:,} / -{branch['decrease']['legal_entity']:,}",
+            branch['from']['total'], branch['to']['total'],
+            f"+{branch['increase']['total']:,} / -{branch['decrease']['total']:,}",
         ]
         for column, value in enumerate(row, start=1):
             cell = sheet.cell(row=5 + index, column=column, value=value)
@@ -507,14 +606,18 @@ def loan_report_xlsx(report: dict[str, Any]) -> bytes:
             cell.alignment = center if column != 2 else Alignment(horizontal='left', vertical='center')
             if column >= 3:
                 cell.number_format = '#,##0;[Red]-#,##0'
-            if column >= 9:
-                cell.font = Font(color='C92F4A' if value < 0 else '07875D', bold=True)
+            if column in (5, 8, 11):
+                cell.font = Font(color='46576C', bold=True)
 
     total_row = 6 + len(report.get('branches', []))
     total_values = [
-        'TỔNG CỘNG', '', report['to']['total'], report['to']['legal_entity'], report['to']['individual'],
-        report['from']['total'], report['from']['legal_entity'], report['from']['individual'],
-        report['change']['total'], report['change']['legal_entity'], report['change']['individual'],
+        'TOÀN ĐƠN VỊ (đếm không trùng)', '',
+        report['from']['individual'], report['to']['individual'],
+        f"+{report['increase']['individual']:,} / -{report['decrease']['individual']:,}",
+        report['from']['legal_entity'], report['to']['legal_entity'],
+        f"+{report['increase']['legal_entity']:,} / -{report['decrease']['legal_entity']:,}",
+        report['from']['total'], report['to']['total'],
+        f"+{report['increase']['total']:,} / -{report['decrease']['total']:,}",
     ]
     for column, value in enumerate(total_values, start=1):
         cell = sheet.cell(row=total_row, column=column, value=value)
@@ -522,14 +625,15 @@ def loan_report_xlsx(report: dict[str, Any]) -> bytes:
         cell.font = total_font
         cell.border = thin_border
         cell.alignment = center if column != 1 else Alignment(horizontal='left', vertical='center')
-        if column >= 3:
+        if column in (3, 4, 6, 7, 9, 10):
             cell.number_format = '#,##0;[Red]-#,##0'
 
     widths = {'A': 8, 'B': 28, 'C': 15, 'D': 15, 'E': 15, 'F': 15, 'G': 15, 'H': 15, 'I': 15, 'J': 15, 'K': 15}
     for column, width in widths.items():
         sheet.column_dimensions[column].width = width
     sheet.row_dimensions[1].height = 28
-    sheet.row_dimensions[4].height = 34
+    sheet.row_dimensions[4].height = 25
+    sheet.row_dimensions[5].height = 34
     sheet.freeze_panes = 'C6'
     sheet.auto_filter.ref = f'A5:K{total_row}'
 
@@ -591,15 +695,18 @@ def list_loans(page: int = 1, page_size: int = 50, days_notice: int | None = Non
                     )
                 )
         if loan_category in {'overdue', 'due'}:
-            due_column = table.c[loan_due_date_column] if loan_due_date_column and loan_due_date_column in table.c else None
-            if due_column is None:
+            if loan_category == 'overdue':
+                due_date = _maturity_date_expression(table)
+            else:
+                due_column = table.c[loan_due_date_column] if loan_due_date_column and loan_due_date_column in table.c else None
+                due_date = cast(due_column, Date) if due_column is not None else None
+            if due_date is None:
                 base_query = base_query.where(false())
             else:
-                due_date = cast(due_column, Date)
                 if loan_category == 'overdue':
                     base_query = base_query.where(
                         and_(
-                            due_date < func.current_date() - 5,
+                            due_date < func.current_date(),
                             status_expression != 'Đã tất toán',
                         )
                     )
@@ -699,6 +806,7 @@ def _calculate_global_summary(connection, table):
     customer_type = _customer_type_expression(table)
     due_column = table.c[loan_due_date_column] if loan_due_date_column and loan_due_date_column in table.c else None
     due_date = cast(due_column, Date) if due_column is not None else None
+    overdue_date = _maturity_date_expression(table)
     summary_query = select(
         func.count().label('total'),
         func.sum(case((status_expression == 'Đã tất toán', 1), else_=0)).label('closed'),
@@ -722,7 +830,7 @@ def _calculate_global_summary(connection, table):
     if due_date is not None:
         summary_query = summary_query.add_columns(
             func.sum(case((and_(due_date >= func.current_date(), due_date <= func.current_date() + 5), 1), else_=0)).label('due_5_days'),
-            func.sum(case((and_(due_date < func.current_date() - 5, status_expression != 'Đã tất toán'), 1), else_=0)).label('overdue'),
+            func.sum(case((and_(overdue_date < func.current_date(), status_expression != 'Đã tất toán'), 1), else_=0)).label('overdue'),
         )
     else:
         summary_query = summary_query.add_columns(func.cast(0, Integer).label('due_5_days'), func.cast(0, Integer).label('overdue'))
@@ -742,6 +850,15 @@ def get_loan(loan_id: int) -> dict[str, Any]:
             raise HTTPException(status_code=404, detail='Không tìm thấy khoản vay.')
         activity = _activity_by_key(connection, str(row.get(loan_dsbsseq_column)).strip() if loan_dsbsseq_column and row.get(loan_dsbsseq_column) is not None else None)
         return _row_for_api(dict(row), activity, None)
+
+
+def get_loan_detail_data(loan_id: int) -> dict[str, Any]:
+    loan = get_loan(loan_id)
+    columns = [
+        {'label': HEADER_LABELS.get(header.upper(), header), 'key': key}
+        for header, key in zip(original_headers, column_keys)
+    ]
+    return {'loan': loan, 'columns': columns}
 
 
 def update_loan(loan_id: int, status: str, note: str, gdv_username: str) -> dict[str, Any]:
@@ -784,7 +901,7 @@ def import_loan_files(files: list[UploadFile]) -> dict[str, Any]:
         if frame.empty:
             continue
         current = [normalize_header(column) for column in frame.columns]
-        missing = sorted(REQUIRED_IMPORT_COLUMNS - {header.upper() for header in current})
+        missing = _missing_import_columns(current)
         if missing:
             raise HTTPException(status_code=400, detail=f'File {file.filename} thiếu cột bắt buộc: {", ".join(missing)}')
         if headers is None:
